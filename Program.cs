@@ -1,39 +1,117 @@
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using SteveAPI.Data;
+using SteveAPI.Services;
+using System.Text;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-builder.Services.AddControllers(); // Mantén esta línea si usas controladores
-// builder.Services.AddEndpointsApiExplorer(); // Si usas Minimal APIs, también necesitarás esto
-// Si no usas Minimal APIs, esta línea ya la tienes por defecto con AddControllers
+// -------------------------------------------------------------------------
+// 1) Configuración de Entity Framework Core + MySQL (Pomelo)
+// -------------------------------------------------------------------------
+var connectionString = builder.Configuration.GetConnectionString("MySqlRailway")
+                      ?? throw new InvalidOperationException("Connection string 'MySqlRailway' no encontrada.");
 
-// >>>>>>>>> SECCIÓN DE SERVICIOS PARA SWAGGER <<<<<<<<<
-// Estas dos líneas deben ir aquí, ANTES de var app = builder.Build();
-builder.Services.AddEndpointsApiExplorer(); // Permite a Swagger descubrir tus endpoints
-builder.Services.AddSwaggerGen();           // Registra el generador de especificaciones OpenAPI
-// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+builder.Services.AddDbContext<ApplicationDbContext>(opts =>
+    opts.UseMySql(
+        connectionString,
+        ServerVersion.AutoDetect(connectionString),
+        mySqlOpts => mySqlOpts.EnableRetryOnFailure(
+            maxRetryCount: 5,
+            maxRetryDelay: TimeSpan.FromSeconds(10),
+            errorNumbersToAdd: null))
+);
+
+// -------------------------------------------------------------------------
+// 2) Configuración CORS
+// -------------------------------------------------------------------------
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
+
+// -------------------------------------------------------------------------
+// 3) Configuración de JWT Authentication
+// -------------------------------------------------------------------------
+var jwtKey = builder.Configuration["Jwt:Key"] 
+             ?? throw new InvalidOperationException("Jwt:Key no puede ser nulo.");
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] 
+                ?? throw new InvalidOperationException("Jwt:Issuer no puede ser nulo.");
+var jwtAudience = builder.Configuration["Jwt:Audience"] 
+                  ?? throw new InvalidOperationException("Jwt:Audience no puede ser nulo.");
+
+var keyBytes = Encoding.UTF8.GetBytes(jwtKey);
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidIssuer = jwtIssuer,
+
+        ValidateAudience = true,
+        ValidAudience = jwtAudience,
+
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey = new SymmetricSecurityKey(keyBytes),
+
+        ValidateLifetime = true,
+        ClockSkew = TimeSpan.Zero
+    };
+});
+
+// -------------------------------------------------------------------------
+// 4) Inyección de dependencias de la capa Service
+// -------------------------------------------------------------------------
+builder.Services.AddScoped<EncriptarService>();
+builder.Services.AddScoped<DesencriptarService>();
+builder.Services.AddScoped<JwtService>();
+
+// -------------------------------------------------------------------------
+// 5) MVC Controllers + Swagger
+// -------------------------------------------------------------------------
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment()) // Swagger UI se habilita comúnmente solo en desarrollo
+// -------------------------------------------------------------------------
+// 6) Migraciones automáticas (desactívalas en producción si lo prefieres)
+// -------------------------------------------------------------------------
+using (var scope = app.Services.CreateScope())
 {
-    // >>>>>>>>> SECCIÓN DE MIDDLEWARE PARA SWAGGER <<<<<<<<<
-    // Estas dos líneas deben ir aquí, DESPUÉS de var app = builder.Build();
-    // y DENTRO del bloque if (app.Environment.IsDevelopment())
-    app.UseSwagger();   // Habilita el middleware que sirve el documento JSON de Swagger
-    app.UseSwaggerUI(); // Habilita el middleware que sirve la interfaz de usuario de Swagger
-    // Puedes personalizar la URL si lo deseas, por ejemplo:
-    // app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "SteveAPI v1"));
-    // Si quieres que se cargue en la raíz (ej. http://localhost:5179/), puedes añadir:
-    // c.RoutePrefix = string.Empty;
-    // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    db.Database.Migrate();
 }
 
-app.UseHttpsRedirection(); // Redirección a HTTPS (si aplica)
-app.UseAuthorization();    // Middleware de autorización (si lo usas)
+// -------------------------------------------------------------------------
+// 7) Pipeline HTTP con CORS y autenticación habilitados
+// -------------------------------------------------------------------------
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
-app.MapControllers(); // Mapea tus controladores
+app.UseHttpsRedirection();
 
-// Si usas Minimal APIs, tendrías líneas como:
-// app.MapGet("/api/hello", () => "Hello World!");
+app.UseCors();
 
-app.Run(); // Esta línea inicia tu aplicación. NADA de código ejecutable después de aquí.
+app.UseAuthentication();  // Agrega esta línea para habilitar autenticación
+app.UseAuthorization();
+
+app.MapControllers();
+
+app.Run();
