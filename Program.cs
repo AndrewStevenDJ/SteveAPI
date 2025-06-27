@@ -1,10 +1,12 @@
-// Program.cs – SteveAPI (.NET 8) para Railway
+// Program.cs – SteveAPI (.NET 8)  ➜  listo para Railway + whitelist de IP
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.HttpOverrides;        // ⬅️  NUEVO
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using SteveAPI.Data;
+using SteveAPI.Middleware;                       // ⬅️  NUEVO
 using SteveAPI.Services;
 using System.Text;
 
@@ -13,6 +15,15 @@ var builder = WebApplication.CreateBuilder(args);
 // ───────────────────── Puerto dinámico de Railway ─────────────────────
 var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+
+// ───────────────────── Proxy headers (para obtener IP real) ────────────
+builder.Services.Configure<ForwardedHeadersOptions>(opts =>
+{
+    opts.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // Railway se encarga de los proxies; permitimos todos
+    opts.KnownNetworks.Clear();
+    opts.KnownProxies.Clear();
+});
 
 // ───────────────────────────────────────────────────────────────────────
 // 1) Entity Framework Core + MySQL (Pomelo)
@@ -90,7 +101,7 @@ builder.Services.AddSwaggerGen(c =>
     {
         Title       = "SteveAPI",
         Version     = "v1",
-        Description = "API protegida con JWT"
+        Description = "API protegida con JWT, acceso solo desde IP de la escuela"
     });
 
     var jwtScheme = new OpenApiSecurityScheme
@@ -129,10 +140,13 @@ using (var scope = app.Services.CreateScope())
 // ───────────────────────────────────────────────────────────────────────
 // 7) Pipeline HTTP
 // ───────────────────────────────────────────────────────────────────────
-app.UseSwagger();      // siempre activo en Railway
-app.UseSwaggerUI();    // UI accesible en /swagger
+app.UseForwardedHeaders();  // obtiene la IP real que envía Railway
+app.UseIpWhitelist();       // bloquea todo lo que no sea 187.155.101.200
 
-app.UseHttpsRedirection(); // Railway hace terminación SSL; redirige a https externo
+app.UseSwagger();           // Swagger siempre activo
+app.UseSwaggerUI();
+
+app.UseHttpsRedirection();
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
