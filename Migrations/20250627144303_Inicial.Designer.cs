@@ -12,7 +12,7 @@ using SteveAPI.Data;
 namespace SteveAPI.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20250626183714_Inicial")]
+    [Migration("20250627144303_Inicial")]
     partial class Inicial
     {
         /// <inheritdoc />
