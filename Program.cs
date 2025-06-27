@@ -1,5 +1,6 @@
-// Program.cs – SteveAPI (.NET 8)
+// Program.cs – SteveAPI (.NET 8) – listo para Railway
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Hosting;         // 👈 necesario para UseUrls
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -8,6 +9,10 @@ using SteveAPI.Services;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ───────────────────── Railway: escuchar en el puerto dinámico ─────────────────────
+var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
+builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
 // ──────────────────────────────────────────────────────────────────────────
 // 1) Entity Framework Core + MySQL (Pomelo)
@@ -93,15 +98,14 @@ builder.Services.AddSwaggerGen(c =>
         Description = "API protegida con JWT"
     });
 
-    // Definición del esquema Bearer con referencia correcta
     var jwtScheme = new OpenApiSecurityScheme
     {
         Name         = "Authorization",
-        Scheme       = "bearer",
+        Scheme       = "Bearer",
         BearerFormat = "JWT",
         Type         = SecuritySchemeType.Http,
         In           = ParameterLocation.Header,
-        Description  = "Ingresa: **Bearer <tu token>**",
+        Description  = "Ingresa: **Bearer {tu_token}**",
         Reference    = new OpenApiReference
         {
             Type = ReferenceType.SecurityScheme,
@@ -131,16 +135,16 @@ using (var scope = app.Services.CreateScope())
 // ──────────────────────────────────────────────────────────────────────────
 // 7) Pipeline HTTP
 // ──────────────────────────────────────────────────────────────────────────
+app.UseHttpsRedirection();
+app.UseCors();
+app.UseAuthentication();
+app.UseAuthorization();
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
-
-app.UseHttpsRedirection();
-app.UseCors();
-app.UseAuthentication();
-app.UseAuthorization();
 
 app.MapControllers();
 app.Run();
