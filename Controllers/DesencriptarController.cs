@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;  // <-- Agregado
 using Microsoft.AspNetCore.Mvc;
 using SteveAPI.Services;
 
@@ -6,6 +7,7 @@ namespace SteveAPI.Controllers
     /// <summary>
     /// Devuelve el texto plano de un mensaje encriptado.
     /// </summary>
+    [Authorize]  // <-- Agregado para proteger todo el controlador
     [ApiController]
     [Route("api/[controller]")]
     public class DesencriptarController : ControllerBase
@@ -14,10 +16,6 @@ namespace SteveAPI.Controllers
 
         public DesencriptarController(DesencriptarService svc) => _svc = svc;
 
-        // ------------------------------------------------------------------
-        // GET: api/Desencriptar/5
-        // Devuelve el texto desencriptado del registro con Id indicado.
-        // ------------------------------------------------------------------
         [HttpGet("{id:int}")]
         public async Task<ActionResult<string>> Get(int id)
         {

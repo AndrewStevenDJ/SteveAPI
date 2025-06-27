@@ -1,25 +1,39 @@
 using Microsoft.AspNetCore.Mvc;
+using SteveAPI.DTOs;
+using SteveAPI.Models;
+using SteveAPI.Services;
+
+namespace SteveAPI.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
 public class AuthController : ControllerBase
 {
-    private readonly JwtService _jwtService;
-
-    public AuthController(JwtService jwtService)
+    // Usuarios de prueba en memoria
+    private static readonly List<User> _users = new()
     {
-        _jwtService = jwtService;
+        new User { Username = "admin", Password = "admin123", Role = "Admin" },
+        new User { Username = "user",  Password = "user123",  Role = "User"  }
+    };
+
+    private readonly JwtTokenGenerator _tokenGenerator;
+
+    public AuthController(JwtTokenGenerator tokenGenerator)
+    {
+        _tokenGenerator = tokenGenerator;
     }
 
     [HttpPost("login")]
-    public IActionResult Login([FromBody] LoginRequest request)
+    public IActionResult Login([FromBody] LoginRequest req)
     {
-        // Aquí validas el usuario y contraseña. Ejemplo simple:
-        if (request.Username == "admin" && request.Password == "1234")
-        {
-            var token = _jwtService.GenerateToken(request.Username);
-            return Ok(new { Token = token });
-        }
-        return Unauthorized();
+        var user = _users.FirstOrDefault(u =>
+            u.Username == req.Username && u.Password == req.Password);
+
+        if (user is null) return Unauthorized("Credenciales inválidas");
+
+        // ⚠️ Token de 10 minutos para este ejemplo
+        var token = _tokenGenerator.GenerateToken(user.Username, user.Role, 10);
+
+        return Ok(new { token });
     }
 }
