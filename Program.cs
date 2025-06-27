@@ -99,17 +99,14 @@ using (var scope = app.Services.CreateScope())
 // -------------------------------------------------------------------------
 // 7) Pipeline HTTP con CORS y autenticación habilitados
 // -------------------------------------------------------------------------
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+app.UseSwagger();
+app.UseSwaggerUI();
 
 app.UseHttpsRedirection();
 
 app.UseCors();
 
-app.UseAuthentication();  // Agrega esta línea para habilitar autenticación
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
