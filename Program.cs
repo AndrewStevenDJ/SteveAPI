@@ -1,6 +1,6 @@
-// Program.cs – SteveAPI (.NET 8) – listo para Railway
+// Program.cs – SteveAPI (.NET 8) para Railway
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Hosting;         // 👈 necesario para UseUrls
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -10,13 +10,13 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ───────────────────── Railway: escuchar en el puerto dinámico ─────────────────────
+// ───────────────────── Puerto dinámico de Railway ─────────────────────
 var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
-// ──────────────────────────────────────────────────────────────────────────
+// ───────────────────────────────────────────────────────────────────────
 // 1) Entity Framework Core + MySQL (Pomelo)
-// ──────────────────────────────────────────────────────────────────────────
+// ───────────────────────────────────────────────────────────────────────
 var connectionString = builder.Configuration.GetConnectionString("MySqlRailway")
                       ?? throw new InvalidOperationException("Connection string 'MySqlRailway' no encontrada.");
 
@@ -24,68 +24,63 @@ builder.Services.AddDbContext<ApplicationDbContext>(opts =>
     opts.UseMySql(
         connectionString,
         ServerVersion.AutoDetect(connectionString),
-        mySqlOpts => mySqlOpts.EnableRetryOnFailure(
-            maxRetryCount: 5,
-            maxRetryDelay: TimeSpan.FromSeconds(10),
-            errorNumbersToAdd: null))
+        mySqlOpts => mySqlOpts.EnableRetryOnFailure(5, TimeSpan.FromSeconds(10), null))
 );
 
-// ──────────────────────────────────────────────────────────────────────────
+// ───────────────────────────────────────────────────────────────────────
 // 2) CORS
-// ──────────────────────────────────────────────────────────────────────────
+// ───────────────────────────────────────────────────────────────────────
 builder.Services.AddCors(options =>
 {
-    options.AddDefaultPolicy(policy =>
-        policy.AllowAnyOrigin()
-              .AllowAnyHeader()
-              .AllowAnyMethod());
+    options.AddDefaultPolicy(p => p.AllowAnyOrigin()
+                                   .AllowAnyHeader()
+                                   .AllowAnyMethod());
 });
 
-// ──────────────────────────────────────────────────────────────────────────
+// ───────────────────────────────────────────────────────────────────────
 // 3) Autenticación JWT
-// ──────────────────────────────────────────────────────────────────────────
+// ───────────────────────────────────────────────────────────────────────
 var jwtKey      = builder.Configuration["Jwt:Key"]
-                 ?? throw new InvalidOperationException("Jwt:Key no puede ser nulo.");
+                 ?? throw new InvalidOperationException("Jwt:Key nulo");
 var jwtIssuer   = builder.Configuration["Jwt:Issuer"]
-                 ?? throw new InvalidOperationException("Jwt:Issuer no puede ser nulo.");
+                 ?? throw new InvalidOperationException("Jwt:Issuer nulo");
 var jwtAudience = builder.Configuration["Jwt:Audience"]
-                 ?? throw new InvalidOperationException("Jwt:Audience no puede ser nulo.");
+                 ?? throw new InvalidOperationException("Jwt:Audience nulo");
 
 var keyBytes = Encoding.UTF8.GetBytes(jwtKey);
 
-builder.Services
-    .AddAuthentication(options =>
+builder.Services.AddAuthentication(o =>
+{
+    o.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    o.DefaultChallengeScheme    = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(o =>
+{
+    o.TokenValidationParameters = new TokenValidationParameters
     {
-        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-        options.DefaultChallengeScheme    = JwtBearerDefaults.AuthenticationScheme;
-    })
-    .AddJwtBearer(options =>
-    {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer           = true,
-            ValidIssuer              = jwtIssuer,
-            ValidateAudience         = true,
-            ValidAudience            = jwtAudience,
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey         = new SymmetricSecurityKey(keyBytes),
-            ValidateLifetime         = true,
-            ClockSkew                = TimeSpan.Zero
-        };
-    });
+        ValidateIssuer           = true,
+        ValidIssuer              = jwtIssuer,
+        ValidateAudience         = true,
+        ValidAudience            = jwtAudience,
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey         = new SymmetricSecurityKey(keyBytes),
+        ValidateLifetime         = true,
+        ClockSkew                = TimeSpan.Zero
+    };
+});
 
 builder.Services.AddAuthorization();
 
-// ──────────────────────────────────────────────────────────────────────────
-// 4) Servicios de la capa Service
-// ──────────────────────────────────────────────────────────────────────────
+// ───────────────────────────────────────────────────────────────────────
+// 4) Servicios propios
+// ───────────────────────────────────────────────────────────────────────
 builder.Services.AddScoped<EncriptarService>();
 builder.Services.AddScoped<DesencriptarService>();
 builder.Services.AddScoped<JwtTokenGenerator>();
 
-// ──────────────────────────────────────────────────────────────────────────
-// 5) MVC + Swagger con esquema Bearer (candadito 🔒)
-// ──────────────────────────────────────────────────────────────────────────
+// ───────────────────────────────────────────────────────────────────────
+// 5) MVC + Swagger con esquema Bearer
+// ───────────────────────────────────────────────────────────────────────
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 
@@ -105,7 +100,7 @@ builder.Services.AddSwaggerGen(c =>
         BearerFormat = "JWT",
         Type         = SecuritySchemeType.Http,
         In           = ParameterLocation.Header,
-        Description  = "Ingresa: **Bearer {tu_token}**",
+        Description  = "Ingresa: **Bearer {token}**",
         Reference    = new OpenApiReference
         {
             Type = ReferenceType.SecurityScheme,
@@ -114,7 +109,6 @@ builder.Services.AddSwaggerGen(c =>
     };
 
     c.AddSecurityDefinition("Bearer", jwtScheme);
-
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
         { jwtScheme, Array.Empty<string>() }
@@ -123,28 +117,25 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
-// ──────────────────────────────────────────────────────────────────────────
-// 6) Migraciones automáticas (desactiva en producción si lo prefieres)
-// ──────────────────────────────────────────────────────────────────────────
+// ───────────────────────────────────────────────────────────────────────
+// 6) Migraciones automáticas (opcional en producción)
+// ───────────────────────────────────────────────────────────────────────
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     db.Database.Migrate();
 }
 
-// ──────────────────────────────────────────────────────────────────────────
+// ───────────────────────────────────────────────────────────────────────
 // 7) Pipeline HTTP
-// ──────────────────────────────────────────────────────────────────────────
-app.UseHttpsRedirection();
+// ───────────────────────────────────────────────────────────────────────
+app.UseSwagger();      // siempre activo en Railway
+app.UseSwaggerUI();    // UI accesible en /swagger
+
+app.UseHttpsRedirection(); // Railway hace terminación SSL; redirige a https externo
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
-
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
 
 app.MapControllers();
 app.Run();
